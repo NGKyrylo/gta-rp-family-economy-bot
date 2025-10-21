@@ -1,0 +1,27 @@
+{
+    "user-id": {
+        "total_points": 0,
+        "weekly_points": 0,
+        "weekly_quest_points": 0,
+        "join_date": null,
+        "has_weekly_immunity": false,
+        "this_week": {
+            "Mon": 0,
+            "Tue": 0,
+            "Wed": 0,
+            "Thu": 0,
+            "Fri": 0,
+            "Sat": 0,
+            "Sun": 0
+        },
+        "last_week": {
+            "Mon": 0,
+            "Tue": 0,
+            "Wed": 0,
+            "Thu": 0,
+            "Fri": 0,
+            "Sat": 0,
+            "Sun": 0
+        }
+    }
+}

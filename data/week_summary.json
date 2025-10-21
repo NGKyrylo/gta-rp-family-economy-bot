@@ -1,0 +1,44 @@
+{
+    "week_start": null,
+    "top_players": [
+        {
+            "user_id": null,
+            "points": null,
+            "place": null
+        },
+        {
+            "user_id": null,
+            "points": null,
+            "place": null
+        }
+    ],
+    "non_quota_users": [],
+    "week_table": [
+        {
+            "user_id": null,
+            "days": {
+                "06.10": 0,
+                "07.10": 0,
+                "08.10": 0,
+                "09.10": 0,
+                "10.10": 0,
+                "11.10": 0,
+                "12.10": 0
+            },
+            "total": 0
+        },
+        {
+            "user_id": null,
+            "days": {
+                "06.10": 0,
+                "07.10": 0,
+                "08.10": 0,
+                "09.10": 0,
+                "10.10": 0,
+                "11.10": 0,
+                "12.10": 0
+            },
+            "total": 0
+        }
+    ]
+}

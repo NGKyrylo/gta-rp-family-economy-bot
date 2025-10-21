@@ -1,0 +1,9 @@
+{
+    "quest": {
+        "status": null,
+        "thread_id": null,
+        "start_time": null,
+        "end_time": null,
+        "cooldown_end": null
+    }
+}
