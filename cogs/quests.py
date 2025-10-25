@@ -5,35 +5,76 @@ import asyncio
 import os
 from config import QUESTS, TIMEZONE, QUESTS_CHANNEL, FAMILY_ROLE_ID
 from views.quest_view import QuestView, load_status, save_status
+from utils.general_utils import find_type
 
 class Quests(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    def formated_help_embed(self):
+        embed = discord.Embed(
+            title="📋 Доступні команди сімейних квестів",
+            color=discord.Color.gold()
+        )
+
+        embed.add_field(
+            name="🎯 Створення квесту",
+            value=(
+                "`!квест <квест> <час> <дата>` - створює заклик у форумі\n"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="Можливі варіанти квестів",
+            value=(
+                "Доступні квести та їх повні назви:\n" +
+                "\n".join([f"• `{key}` - {quest['full_name']}" for key, quest in QUESTS.items()])
+            ),
+            inline=False
+        )
+
+
+        embed.add_field(
+            name="📌 Перегляд статусу всіх квестів",
+            value="`!квести` - показує, які квести доступні, заплановані, у КД або тривають.",
+            inline=False
+        )
+
+        embed.set_footer(text="💡 Використовуйте ці команди, щоб керувати сімейними квестами та бачити їх статуси.\nℹ️ Формат часу: гг:хх, формат дати: дд.мм")
+
+        return embed
+    
     @commands.command(name="квест")
-    async def create_quest(self, ctx, quest_key: str = None, start_time: str = None, start_date: str = None):
+    async def create_quest(self, ctx, *, args_str: str = None):
         """Створює новий квест-заклик у форумі."""
+
+        if not args_str:
+            embed = self.formated_help_embed()
+            msg = await ctx.send(embed=embed)
+            await asyncio.sleep(20)
+            await msg.delete()
+            await ctx.message.delete()
+            return
+        
+        words = args_str.split()
+        quest_key = None
+        start_time = None
+        start_date = None
+
+        for i in range(len(words), 0, -1):
+            quest_type = " ".join(words[:i])
+            found_type = find_type(quest_type, QUESTS)
+            if found_type:
+                quest_key = found_type
+                remaining_args = words[i:]
+                if len(remaining_args) >= 2:
+                    start_time = remaining_args[0]
+                    start_date = remaining_args[1]
+                break
+
         if not quest_key or quest_key not in QUESTS:
-            embed = discord.Embed(
-                title="📋 Доступні команди сімейних квестів",
-                color=discord.Color.gold()
-            )
-
-            embed.add_field(
-                name="🎯 Створення квесту",
-                value=(
-                    "`!квест <допомога/товарка/суботник/рибалка> <час> <дата>` - створює заклик у форумі\n"
-                ),
-                inline=False
-            )
-
-            embed.add_field(
-                name="📌 Перегляд статусу всіх квестів",
-                value="`!квести` - показує, які квести доступні, заплановані, у КД або тривають.",
-                inline=False
-            )
-
-            embed.set_footer(text="💡 Використовуйте ці команди, щоб керувати сімейними квестами та бачити їх статуси.\nℹ️ Формат часу: гг:хх, формат дати: дд.мм")
+            embed = self.formated_help_embed()
             msg = await ctx.send(embed=embed)
             await asyncio.sleep(20)
             await msg.delete()
@@ -52,24 +93,47 @@ class Quests(commands.Cog):
         s = statuses.get(quest_key)
         now = datetime.now(TIMEZONE)
 
-        # Перевірка і оновлення статусу по реальному часу
+        can_schedule = False
+
+        # Спроба розпарсити вказану дату/час (формат: "дд.мм" та "гг:хх").
+        requested_start = None
+        if start_time and start_date:
+            try:
+                parsed = datetime.strptime(f"{start_date} {start_time}", "%d.%m %H:%M")
+                requested_start = parsed.replace(year=now.year, tzinfo=TIMEZONE)
+            except Exception:
+                requested_start = None
+
+        # Перевірка і оновлення статусу відносно запрошеної дати/часу (якщо вказана) або now
         if s:
             if s.get("status") == "cooldown":
                 cd_end = datetime.fromisoformat(s["cooldown_end"])
-                if now < cd_end:
-                    await ctx.send(f"⏳ Квест ще на кулдауні до {cd_end.strftime('%H:%M %d.%m')}!", delete_after=5)
-                    await ctx.message.delete()
-                    # return
+                # Якщо користувач вказав час планування — порівнюємо з ним
+                if requested_start:
+                    if requested_start < cd_end:
+                        await ctx.send(f"⏳ Квест на кулдауні до {cd_end.strftime('%H:%M %d.%m')}. Оберіть час після цієї дати.", delete_after=7)
+                        await ctx.message.delete()
+                        return
+                    # якщо requested_start >= cd_end — дозволяємо планувати, але НЕ змінюємо cooldown_end
+                    can_schedule = True
                 else:
-                    s["status"] = "available"
+                    # без вказаної дати — поведінка як раніше: забороняємо якщо кулдаун ще триває
+                    if now < cd_end:
+                        await ctx.send(f"⏳ Квест ще на кулдауні до {cd_end.strftime('%H:%M %d.%m')}!", delete_after=5)
+                        await ctx.message.delete()
+                        return
+                    else:
+                        s["status"] = "available"
             elif s.get("status") == "started":
                 end_time = datetime.fromisoformat(s["end_time"])
-                if now < end_time:
+                # при плануванні враховуємо requested_start якщо є
+                cmp_time = requested_start or now
+                if cmp_time < end_time:
                     await ctx.send(f"⚠️ Квест уже йде до {end_time.strftime('%H:%M %d.%m')}!", delete_after=5)
                     await ctx.message.delete()
                     return
                 else:
-                    cooldown_end = now + timedelta(hours=quest["cooldown_hours"])
+                    cooldown_end = cmp_time + timedelta(hours=quest["cooldown_hours"])
                     s.update({"status": "cooldown", "cooldown_end": cooldown_end.isoformat()})
             elif s.get("status") == "scheduled":
                 thread_id = s.get("thread_id")
@@ -77,6 +141,8 @@ class Quests(commands.Cog):
                     await ctx.send(f"⚠️ Квест уже заплановано у форумі!", delete_after=5)
                     await ctx.message.delete()
                     return
+
+        ####
 
         # Якщо вже scheduled, просто беремо thread_id, не створюємо новий пост
         guild = ctx.guild
@@ -94,11 +160,14 @@ class Quests(commands.Cog):
         )
         embed.set_footer(text="Статус: 🔵 Заплановано")
 
-        embed.set_image(url=quest["image"])
+        if quest["image"]:
+            embed.set_image(url=quest["image"])
 
         view = QuestView(quest_key, ctx.author.id)
 
-        if not s or s.get("status") == "available":
+        # if not s or s.get("status") == "available":
+        if can_schedule or not s or s.get("status") == "available":
+
             thread = await forum.create_thread(
                 name=title,
                 content=f"{ctx.guild.get_role(FAMILY_ROLE_ID).mention}",
@@ -108,12 +177,13 @@ class Quests(commands.Cog):
             
             thread_id = thread.thread.id
             s = s or {}
+
             s.update({
                 "status": "scheduled",
                 "thread_id": thread_id,
-                "start_time": None,
+                "start_time": requested_start.isoformat() if requested_start else None,
                 "end_time": None,
-                "cooldown_end": None,
+                # не чіпаємо "cooldown_end" щоб зберегти справжній КД
             })
             statuses[quest_key] = s
             save_status(statuses)
@@ -186,8 +256,10 @@ class Quests(commands.Cog):
                 inline=False
             )
 
-        await ctx.send(embed=embed)
+        msg = await ctx.send(embed=embed)
         await ctx.message.delete()
+        await asyncio.sleep(120)
+        await msg.delete()
 
     @commands.command(name="скинути_квест")
     async def reset_quest(self, ctx, quest_key: str):

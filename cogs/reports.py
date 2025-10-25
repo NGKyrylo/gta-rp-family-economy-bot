@@ -3,7 +3,7 @@ from discord.ext import commands
 import asyncio
 from datetime import datetime, timezone
 
-from utils.general_utils import parse_report_date
+from utils.general_utils import parse_report_date, find_type
 from views.report_views import ConfirmReportView
 from utils.db_utils import Database
 
@@ -14,54 +14,79 @@ class Reports(commands.Cog):
         self.bot = bot
         self.db = Database()
 
+    def formated_help_embed(self):
+        # Create embed
+        embed = discord.Embed(
+            title="📋 Доступні команди",
+            color=discord.Color.gold()
+        )
+
+        # Group activities
+        family_quests = []
+        activities = []
+            
+        for cmd, info in REPORT_TYPES.items():
+            if cmd == "внесок":
+                donation_help = "\n".join(info["help"])
+                continue
+                    
+            if info.get("is_family_quest"):
+                family_quests.append(info["help"])
+            else:
+                activities.append(info["help"])
+
+        # Add fields to embed
+        embed.add_field(
+            name="🎯 Сімейні квести",
+            value="\n".join(family_quests) or "Немає доступних квестів",
+            inline=False
+        )
+            
+        embed.add_field(
+            name="📝 Активності",
+            value="\n".join(activities) or "Немає доступних активностей",
+            inline=False
+        )
+            
+        embed.add_field(
+            name="💰 Внески",
+            value=donation_help,
+            inline=False
+        )
+            
+        embed.set_footer(text="❗ До кожного звіту додавайте скріншот")
+
+        return embed
 
     @commands.command(name="звіт")
-    async def report(self, ctx, report_type: str = None, *args):
+    async def report(self, ctx, *, args_str: str = None):
         """Команда для звітування про активність"""
+
+        if not args_str:
+            embed = self.formated_help_embed()
+            msg = await ctx.send(embed=embed)
+            await asyncio.sleep(20)
+            await msg.delete()
+            await ctx.message.delete()
+            return
+
+        # Split into words and find report type
+        words = args_str.split()
+        report_type = None
+        remaining_args = []
+
+        # Try different word combinations from start
+        for i in range(len(words), 0, -1):
+            test_type = " ".join(words[:i])
+            found_type = find_type(test_type, REPORT_TYPES)
+            if found_type:
+                report_type = found_type
+                remaining_args = words[i:]
+                break
         
         # Check report type
         if not report_type or report_type not in REPORT_TYPES:
-            # Create embed
-            embed = discord.Embed(
-                title="📋 Доступні команди",
-                color=discord.Color.gold()
-            )
-
-            # Group activities
-            family_quests = []
-            activities = []
-            
-            for cmd, info in REPORT_TYPES.items():
-                if cmd == "внесок":
-                    donation_help = "\n".join(info["help"])
-                    continue
-                    
-                if info.get("is_family_quest"):
-                    family_quests.append(info["help"])
-                else:
-                    activities.append(info["help"])
-
-            # Add fields to embed
-            embed.add_field(
-                name="🎯 Сімейні квести",
-                value="\n".join(family_quests) or "Немає доступних квестів",
-                inline=False
-            )
-            
-            embed.add_field(
-                name="📝 Активності",
-                value="\n".join(activities) or "Немає доступних активностей",
-                inline=False
-            )
-            
-            embed.add_field(
-                name="💰 Внески",
-                value=donation_help,
-                inline=False
-            )
-            
-            embed.set_footer(text="❗ До кожного звіту додавайте скріншот")
-            
+            embed = self.formated_help_embed()
             # Send embed
             msg = await ctx.send(embed=embed)
             await asyncio.sleep(20)
@@ -75,7 +100,7 @@ class Reports(commands.Cog):
 
         # Handle different report types
         if report_type == "внесок":
-            if len(args) < 2:
+            if len(remaining_args) < 2:
                 msg = await ctx.send("❌ Вкажіть суму та призначення внеску!")
                 await asyncio.sleep(5)
                 await msg.delete()
@@ -83,8 +108,8 @@ class Reports(commands.Cog):
                 return
             
             try:
-                amount = float(args[0])
-                purpose = " ".join(args[1:])
+                amount = float(remaining_args[0])
+                purpose = " ".join(remaining_args[1:])
 
                 # Calculate points if purpose is "поінти"
                 if purpose.lower() == "поінти":
@@ -118,7 +143,7 @@ class Reports(commands.Cog):
                 return
 
         elif report_type == "допомога":
-            if not args or args[0] not in r_type["variants"]:
+            if not remaining_args or remaining_args[0] not in r_type["variants"]:
                 variants = "/".join(r_type["variants"].keys())
                 msg = await ctx.send(f"❌ Вкажи тип допомоги: {variants}")
                 await asyncio.sleep(5)
@@ -126,8 +151,8 @@ class Reports(commands.Cog):
                 await ctx.message.delete()
                 return
                 
-            variant = r_type["variants"][args[0]]
-            date_str = args[1] if len(args) > 1 else None
+            variant = r_type["variants"][remaining_args[0]]
+            date_str = remaining_args[1] if len(remaining_args) > 1 else None
             
             # Check screenshots count
             if len(ctx.message.attachments) < variant["required_screenshots"]:
@@ -153,15 +178,15 @@ class Reports(commands.Cog):
             ]
 
         elif r_type.get("requires_hours"):
-            if not args or not args[0].isdigit():
+            if not remaining_args or not remaining_args[0].isdigit():
                 msg = await ctx.send("❌ Вкажи кількість повних годин патруля!")
                 await asyncio.sleep(5)
                 await msg.delete()
                 await ctx.message.delete()
                 return
             
-            hours = int(args[0])
-            date_str = args[1] if len(args) > 1 else None
+            hours = int(remaining_args[0])
+            date_str = remaining_args[1] if len(remaining_args) > 1 else None
             report_date = parse_report_date(date_str)
             
             if not report_date:
@@ -181,7 +206,7 @@ class Reports(commands.Cog):
 
         else:
             # Regular reports
-            date_str = args[0] if args else None
+            date_str = remaining_args[0] if remaining_args else None
             report_date = parse_report_date(date_str)
             
             if not report_date:
