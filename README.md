@@ -17,6 +17,49 @@ Originally created for a Ukrainian-speaking Discord community, the bot features 
 
 ---
 
+## 📷 Screenshots
+
+### Welcome message
+![welcome-message](img/Welcome%20Message.png)
+
+### Report instructions
+![report-instructions](img/Report%20instructions.png)
+
+### Command help messages
+![help-messages](img/Command%20help%20messages.png)
+
+### Quest reprts examples
+![quest-report-examples](img/Quest%20reprts%20examples.png)
+
+### Contribution reports examples
+![contribution-reports-examples](img/Contribution%20reports%20examples.png)
+
+### User statistics card
+![user-statistics-card](img/User%20statistics%20card.png)
+
+### Weekly quest summary announcement
+![weekly-quest-summary-announcement](img/Weekly%20quest%20summary%20announcement.png)
+
+### Automatically issued warning by the Discord bot
+![warning](img/Automatically%20issued%20warning%20by%20the%20Discord%20bot.png)
+
+### Family Quests Status Dashboard
+[quests-statuses](img/Family%20Quests%20Status%20Dashboard.png)
+
+### Quest Announcement in Discord
+[quest-annoncement-1](img/Quest%20Announcement%20in%20Discord.png)
+
+### Quest Announcement in Discord
+[quest-annoncement-2](img/Quest%20Announcement%20in%20Discord-1.png)
+
+### Quest Announcement in Discord
+[quest-annoncement-3](img/Quest%20Announcement%20in%20Discord-2.png)
+
+### Quest Announcement in Discord
+[quest-annoncement-4](img/Quest%20Announcement%20in%20Discord-3.png)
+
+---
+
 ## 🧠 Technical Overview
 - **Language:** Python 3.12  
 - **Framework:** `discord.py`  
