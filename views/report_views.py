@@ -56,6 +56,11 @@ class ConfirmReportView(View):
                 REPORT_TYPES.get(report_data["type"], {}).get("is_family_quest", False)
             )
 
+        if report_data.get("amount") is not None:
+            if report_data.get("purpose") == "поінти":
+                self.db.update_vault_data(0, report_data["amount"])
+            else:
+                self.db.update_vault_data(report_data["amount"], 0)
 
         self.db.remove_report(interaction.message.id)
 

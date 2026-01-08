@@ -30,6 +30,7 @@ REPORT_INSPECTOR_ROLE_ID = None  # ROLE ID FOR REPORT INSPECTORS
 BOT_DEVELOPER_ID = None             # USER ID OF THE BOT DEVELOPER
 ADMIN_ROLE_IDS = []                 # LIST OF ROLE IDS FOR ADMINS
 ECONOMY_CONTROLLER_ROLE_IDS = []    # LIST OF ROLE IDS FOR ECONOMY CONTROLLERS
+DISCIPLINE_CONTROLLER_ROLE_IDS = [] # LIST OF ROLE IDS FOR DISCIPLINE CONTROLLERS
 RECRUITER_ROLE_IDS = []             # LIST OF ROLE IDS FOR RECRUITERS
 
 ##############################################################################
@@ -45,6 +46,9 @@ REPORT_CHANNELS = {
     "quest": None,          # CHANNEL ID FOR QUEST REPORTS
     "donation": None        # CHANNEL ID FOR DONATION REPORTS
 }
+
+DISCIPLINE_CHANNEL_ID = 1   # CHANNEL ID FOR DISCIPLINE MATTERS
+HEAD_OF_DISCIPLINE_ID = 1   # USER ID OF THE HEAD OF DISCIPLINE
 
 POINT_COST = 50000          # COST IN USD FOR 1 POINT
 REQUIRED_WEEKLY_POINTS = 2  # REQUIRED POINTS PER WEEK
@@ -384,4 +388,10 @@ QUESTS = {             # DEFINITIONS OF FAMILY QUESTS AND THEIR PROPERTIES FOR A
         "cooldown_hours": 48,
         "aliases": ["вартові свого", "захист", "оборона"]
     }
+}
+
+WARN_REASONS = {
+    "поінти": "Не набрано мінімальну кількість поінтів за тиждень",
+    "ТК": "Вбивство іншого члена сім'ї",
+    "ОскСК": "Образа старшого складу сім'ї",
 }

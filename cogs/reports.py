@@ -3,7 +3,7 @@ from discord.ext import commands
 import asyncio
 from datetime import datetime, timezone
 
-from utils.general_utils import parse_report_date, find_type
+from utils.general_utils import parse_report_date, find_type, format_money
 from views.report_views import ConfirmReportView
 from utils.db_utils import Database
 
@@ -59,8 +59,12 @@ class Reports(commands.Cog):
         return embed
 
     @commands.command(name="звіт")
+    # async def report(self, ctx, report_type: str = None, *args):
     async def report(self, ctx, *, args_str: str = None):
         """Команда для звітування про активність"""
+
+        amount = None
+        purpose = None
 
         if not args_str:
             embed = self.formated_help_embed()
@@ -124,7 +128,7 @@ class Reports(commands.Cog):
                 report_date = parse_report_date(None)
 
                 report_text = [
-                    f"💵 **Внесок:** {amount:,.2f}$",
+                    f"💵 **Внесок:** {format_money(amount)}$",
                     f"👤 **Користувач:** {ctx.author.mention}",
                     f"📋 **Призначення:** {purpose}"
                 ]
@@ -133,7 +137,9 @@ class Reports(commands.Cog):
                     report_text.append(f"💰 **Поінти:** {points}")
                     remainder = amount % POINT_COST
                     if remainder > 0:
-                        report_text.append(f"ℹ️ _Залишок {remainder:,.2f}$ не враховано у бали_")
+                        report_text.append(f"ℹ️ _Залишок {format_money(remainder)}$ не враховано у бали_")
+
+                # self.db.update_vault_data(0, amount)
 
             except ValueError:
                 msg = await ctx.send("❌ Некоректна сума внеску!")
@@ -243,6 +249,10 @@ class Reports(commands.Cog):
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "report_date": report_date
         }
+
+        if amount is not None:
+           report_data["amount"] = amount
+           report_data["purpose"] = purpose
 
         # Send report
         files = [await att.to_file() for att in ctx.message.attachments]

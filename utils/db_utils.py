@@ -6,7 +6,7 @@ from typing import Dict, Optional
 import asyncio
 from utils.export_sheets import export_to_sheets
 
-from config import TIMEZONE, REQUIRED_WEEKLY_POINTS, GUILD_ID
+from config import TIMEZONE, REQUIRED_WEEKLY_POINTS, GUILD_ID, FAMILY_ROLE_ID
 
 class Database:
     def __init__(self, data_dir: str = "data"):
@@ -15,6 +15,7 @@ class Database:
         self.reports_file = os.path.join(data_dir, "reports.json")
         self.privileged_file = os.path.join(data_dir, "privileged_immunity.json")
         self.week_summary_file = os.path.join(data_dir, "week_summary.json")
+        self.vault_file = os.path.join(data_dir, "vault.json")
         self._ensure_files_exist()
 
     def _ensure_files_exist(self):
@@ -33,6 +34,9 @@ class Database:
         if not os.path.exists(self.week_summary_file):
             self._save_json(self.week_summary_file, {})
 
+        if not os.path.exists(self.vault_file):
+            self._save_json(self.vault_file, {"family_pot": 0, "week_income": 0})
+
     def _load_json(self, file_path: str) -> dict:
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
@@ -50,7 +54,9 @@ class Database:
             "weekly_points": 0,
             "weekly_quest_points": 0,
             "join_date": datetime.now(timezone.utc).isoformat(),
-            "has_weekly_immunity": True
+            "has_weekly_immunity": True,
+            "is_on_server": True,
+            "is_family_member": True,
         }
 
     def add_user(self, user_id: int):
@@ -59,7 +65,11 @@ class Database:
         
         if user_id not in users:
             users[user_id] = self._get_default_user_data()
-            self._save_json(self.users_file, users)
+        else:
+            users[user_id]["is_on_server"] = True
+            users[user_id]["is_family_member"] = True
+
+        self._save_json(self.users_file, users)
     
     def get_user(self, user_id: int) -> dict:
         users = self._load_json(self.users_file)
@@ -69,6 +79,28 @@ class Database:
             self.add_user(user_id)
 
         return users[user_id]
+    
+    def get_all_users(self) -> dict:
+        """Отримати всіх користувачів з бази даних"""
+        return self._load_json(self.users_file)
+    
+    def update_family_status(self, user_id: int, is_family_member: bool):
+       """Оновити статус членства в сім'ї"""
+       users = self._load_json(self.users_file)
+       user_id = str(user_id)
+       
+       if user_id in users:
+           users[user_id]["is_family_member"] = is_family_member
+           self._save_json(self.users_file, users)
+
+    def update_server_status(self, user_id: int, is_on_server: bool):
+       """Оновити статус перебування на сервері"""
+       users = self._load_json(self.users_file)
+       user_id = str(user_id)
+       
+       if user_id in users:
+           users[user_id]["is_on_server"] = is_on_server
+           self._save_json(self.users_file, users)
 
     def get_join_date(self, user_id: int) -> Optional[datetime]:
         users = self._load_json(self.users_file)
@@ -138,6 +170,23 @@ class Database:
         if is_family_quest:
             users[user_id]["weekly_quest_points"] += points
         
+        self._save_json(self.users_file, users)
+
+    async def verify_guild_members(self, guild: discord.Guild):
+        """Перевіряє, чи всі користувачі в базі є на сервері, оновлює статус is_on_server"""
+        users = self._load_json(self.users_file)
+
+        for user_id in users:
+            try:
+                member = await guild.fetch_member(int(user_id))
+                # Перевірка наявності ролі
+                if any(role.id == FAMILY_ROLE_ID for role in member.roles):
+                    users[user_id]["is_on_server"] = True
+                else:
+                    users[user_id]["is_on_server"] = False
+            except discord.NotFound:
+                users[user_id]["is_on_server"] = False
+
         self._save_json(self.users_file, users)
 
     def add_points_for_date(self, user_id: int, points: int, report_date: datetime, is_family_quest: bool = False):
@@ -237,50 +286,53 @@ class Database:
 
         return False
 
-    def finalize_weekly_stats(self, guild: discord.Guild):
+    async def finalize_weekly_stats(self, guild: discord.Guild):
         """Підбиття підсумків тижня — незалежно від Discord, з урахуванням імунітетів"""
+        await self.verify_guild_members(guild)
+        self.update_weekly_immunities()
         users = self._load_json(self.users_file)
         
         rewards_data = {
             "week_start": (datetime.now(TIMEZONE) - timedelta(days=datetime.now(TIMEZONE).weekday())).strftime("%d.%m.%Y"),
             "top_players": [],
             "non_quota_users": [],
-            "week_table": []
+            "week_table": [],
         }
 
         days = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
 
         # Підготовка топу по квестах (всі користувачі, імунітет не виключає премії)
-        top_candidates = [(uid, data["weekly_quest_points"]) for uid, data in users.items() if data["weekly_quest_points"] > 0]
+        top_candidates = [(uid, data["weekly_quest_points"]) for uid, data in users.items() if data.get("is_on_server", True) and data["weekly_quest_points"] > REQUIRED_WEEKLY_POINTS]
         top_candidates.sort(key=lambda x: x[1], reverse=True)
 
         top_players = []
         current_place = 1
         last_points = None
-        same_place_count = 0  # скільки людей поділяють місце
 
         for idx, (uid, points) in enumerate(top_candidates):
             # якщо це новий результат — підвищуємо місце з урахуванням попередніх груп
             if last_points is not None and points != last_points:
-                current_place += same_place_count
-                same_place_count = 0
+                current_place += 1
+
+            # обмеження: тільки топ-3 (але враховуємо нічиї)
+            if current_place > 3:
+                break
 
             # додаємо гравця
             top_players.append({"user_id": int(uid), "points": points, "place": current_place})
 
             # оновлюємо лічильники
             last_points = points
-            same_place_count += 1
-
-            # обмеження: тільки топ-3 (але враховуємо нічиї)
-            if current_place > 3:
-                break
 
         rewards_data["top_players"] = top_players
 
         # Користувачі, що не виконали квоту (ігнор імунітету)
         non_quota_users = []
+        
         for uid, data in users.items():
+            if not data.get("is_on_server", True):
+                continue
+
             member = guild.get_member(int(uid))
             if member and not self.has_quota_immunity(int(uid), member) and data["weekly_points"] < REQUIRED_WEEKLY_POINTS:
                 non_quota_users.append({"user_id": int(uid), "points": data["weekly_points"]})
@@ -300,6 +352,9 @@ class Database:
         week_dates = [(start_last_week + timedelta(days=i)).strftime("%d.%m") for i in range(7)]
 
         for uid, data in users.items():
+            if not data.get("is_on_server", True):
+                continue
+
             member = guild.get_member(int(uid))
             if not member:
                 continue  # виключаємо тих, кого нема на сервері
@@ -341,6 +396,24 @@ class Database:
         self._save_json(self.week_summary_file, rewards_data)
 
         # Експорт у Google Sheets
-        asyncio.create_task(export_to_sheets(guild))
+        bonus_data = await export_to_sheets(guild)
 
-        return rewards_data, users
+        return rewards_data, users, bonus_data
+    
+
+    def get_vault_data(self) -> dict:
+        """Отримує дані сховища общака"""
+        return self._load_json(self.vault_file)
+    
+    def update_vault_data(self, family_pot: float = 0, week_income: float = 0):
+        """Оновлює дані сховища общака"""
+        vault_data = self.get_vault_data()
+        vault_data["family_pot"] += family_pot
+        vault_data["week_income"] += week_income
+        self._save_json(self.vault_file, vault_data)
+
+    def week_income_to_zero(self):
+        vault_data = self.get_vault_data()
+        vault_data["week_income"] = 0
+        self._save_json(self.vault_file, vault_data)
+    

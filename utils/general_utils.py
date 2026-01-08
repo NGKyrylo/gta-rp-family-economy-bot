@@ -1,10 +1,27 @@
 import re
 import discord
+from discord.ext import commands
 from discord import Embed
 from datetime import date, datetime, timedelta
-from config import TIMEZONE, SHEET_URL, FAMILY_ROLE_ID, REPORT_TYPES, QUESTS
+from config import TIMEZONE, SHEET_URL, FAMILY_ROLE_ID, REPORT_TYPES, QUESTS, DEBT_CHANNEL_ID, DEBT_LOG_CHANNEL_ID
+from views.debt_view import DebtView
 
 def parse_report_date(date_str=None):
+    # today = datetime.now(TIMEZONE)
+    # year = today.year
+
+    # """Парсить дату звіту з формату dd.mm"""
+    # if date_str:
+    #     try:
+    #         day, month = map(int, date_str.split("."))
+    #         _ = datetime(year, month, day, tzinfo=TIMEZONE)
+    #         # year = datetime.today().year
+    #         return f"{day}.{month}.{year}"
+    #     except ValueError:
+    #         return None
+    # # return f"{datetime.today().day}.{datetime.today().month}.{datetime.today().year}"
+    # return today.strftime("%d.%m.%Y")
+
     """
     Parse date string into dd.mm format
     Accepts formats: dd.mm, dd.mm., dd.mm.yyyy, dd.mm.yyyy.
@@ -64,7 +81,48 @@ def get_points_word(points: float) -> str:
         return "поінти"
     return "поінтів"
 
-async def send_week_summary(channel: discord.TextChannel, guild: discord.Guild, rewards_data: dict):
+# async def send_week_summary(channel: discord.TextChannel, guild: discord.Guild, rewards_data: dict):
+#     """
+#     Відправляє підсумки минулого тижня у канал у сучасному оформленні.
+#     """
+#     top_players = rewards_data.get("top_players", [])
+#     if not top_players:
+#         await channel.send("📊 Підсумки тижня ще не зібрані.")
+#         return
+
+#     # Структуруємо топ-3 переможців
+#     prize_mapping = {1: "150k", 2: "100k", 3: "50k"}
+#     lines = []
+#     for place in range(1, 4):
+#         members_on_place = [guild.get_member(p["user_id"]).mention 
+#                             for p in top_players if p["place"] == place and guild.get_member(p["user_id"])]
+#         if members_on_place:
+#             lines.append(f"**{place} місце** - {' '.join(members_on_place)} ({prize_mapping[place]})")
+
+#     # Основний Embed
+#     embed = Embed(
+#         title="📊 Підсумки участі в квестах минулого тижня 🐅",
+#         description=(
+#             "За результатами участі в квестах минулого тижня оголошено переможців:\n\n"
+#             + "\n".join(lines) + "\n\n"
+#             "Переможців вітаю, решта не засмучуємось — у вас є можливість відігратись на цьому тижні! 🤝🏻🫡"
+#         ),
+#         color=discord.Color.gold()
+#     )
+
+#     # Додаємо гіперпосилання на Google Sheets
+#     embed.add_field(
+#         name="📈 Перевірити кількість поінтів",
+#         value=f"[Відкрити таблицю з результатами]({SHEET_URL})",
+#         inline=False
+#     )
+
+#     # Символічний бонус для переможців
+#     embed.set_footer(text="Переможці отримують свій бонус 🎁")
+
+#     await channel.send(embed=embed)
+
+async def send_week_summary(bot: commands.Bot, channel: discord.TextChannel, guild: discord.Guild, rewards_data: dict, bonus_data: dict):
     """
     Відправляє підсумки минулого тижня у канал у сучасному Embed-оформленні.
     """
@@ -79,14 +137,19 @@ async def send_week_summary(channel: discord.TextChannel, guild: discord.Guild, 
         if member and place in places:
             places[place].append(member.mention)
 
+    now = datetime.now(TIMEZONE)
+    week_start = (now - timedelta(days=now.weekday() + 7)).strftime("%d.%m")
+    week_end = (now - timedelta(days=now.weekday() + 1)).strftime("%d.%m")
+    week_range = f"{week_start}-{week_end}"
+
     # 🥇🥈🥉 Форматуємо місця — завжди показуємо всі
     def format_place(place_num: int, members: list[str]) -> str:
         emojis = {1: "🥇", 2: "🥈", 3: "🥉"}
-        prizes = {1: "150 000", 2: "100 000", 3: "50 000"}
+        prizes = {1: f"{bonus_data['top'][0]}", 2: f"{bonus_data['top'][1]}", 3: f"{bonus_data['top'][2]}"}
 
         if members:
             members_text = " ".join(members)
-            return f"{emojis[place_num]} **{place_num} місце** — {members_text} (`+{prizes[place_num]}💰`)"
+            return f"{emojis[place_num]} **{place_num} місце** — {members_text} (`+{format_money(float(prizes[place_num]))}💰`)"
         else:
             return f"{emojis[place_num]} **{place_num} місце** — *Ніхто цього тижня не потрапив 😅*"
 
@@ -122,6 +185,24 @@ async def send_week_summary(channel: discord.TextChannel, guild: discord.Guild, 
     else:
         await channel.send("🐅", embed=embed)
 
+    prizes = {1: bonus_data["top"][0], 2: bonus_data["top"][1], 3: bonus_data["top"][2]}
+    await create_top_debts(bot=bot, guild=guild, places=places, prizes=prizes, week_range=week_range)
+
+async def create_top_debts(bot: commands.Bot, guild: discord.Guild, places: dict[int, list[str]], prizes: dict[int, float], week_range: str):
+    """
+    Генерує борги для всіх переможців ТОПів.
+    """
+    for place, members in places.items():
+        amount = float(prizes.get(place, 0))
+        for mention in members:
+            reason = f"{mention}: за ТОП{place} {week_range}"
+            await post_debt(
+                bot=bot,
+                guild=guild,
+                amount=amount,
+                reason=reason
+            )
+
 def find_type(user_input: str, config_dict: dict) -> str | None:
     """
     Find the canonical type from user input in given config dictionary
@@ -148,3 +229,25 @@ def find_type(user_input: str, config_dict: dict) -> str | None:
                 return type_key
                 
     return None
+
+def format_money(amount):
+    return f"{amount:,.2f}".replace(",", " ").replace(".", ",")
+
+async def post_debt(bot: commands.Bot, guild: discord.Guild, amount: float, reason: str):
+    channel = bot.get_channel(DEBT_CHANNEL_ID)
+    if not channel:
+        return
+
+    embed = discord.Embed(
+        # title="💰 Борг",
+        description=reason,
+        color=discord.Color.gold()
+    )
+    embed.add_field(
+        name="Сума",
+        value=f"**{format_money(amount)}$**",
+        inline=True
+    )
+
+    view = DebtView()
+    await channel.send(embed=embed, view=view)

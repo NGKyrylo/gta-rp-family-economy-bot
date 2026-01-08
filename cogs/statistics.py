@@ -1,3 +1,4 @@
+import asyncio
 import discord
 from discord.ext import commands
 from discord.ui import View, button
@@ -102,8 +103,10 @@ class Statistics(commands.Cog):
         embed.add_field(name="📆 Дата приєднання", value=join_date, inline=False)
 
         view = StatsView(self.db, user_id, member)
-        await ctx.send(embed=embed, view=view)
+        msg = await ctx.send(embed=embed, view=view)
         await ctx.message.delete()
+        await asyncio.sleep(120)
+        await msg.delete()
 
 
 async def setup(bot):

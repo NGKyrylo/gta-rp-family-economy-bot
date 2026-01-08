@@ -16,6 +16,8 @@ class MemberEvents(commands.Cog):
         after_roles = {r.id for r in after.roles}
 
         added_roles = after_roles - before_roles
+        removed_roles = before_roles - after_roles
+
         if FAMILY_ROLE_ID in added_roles:
             # додаємо користувача до БД
             self.db.add_user(after.id)
@@ -28,6 +30,36 @@ class MemberEvents(commands.Cog):
                 )
             except discord.Forbidden:
                 pass  # не вдалося надіслати ДМ
+
+        if FAMILY_ROLE_ID in removed_roles:
+            # Оновлюємо статус членства в сім'ї на False
+            self.db.update_family_status(after.id, False)
+            
+            # Опціонально: повідомлення в ДМ
+            # try:
+            #     await after.send(
+            #         f"👋 {after.display_name}, тебе видалено з сімейного реєстру.\n"
+            #         f"Твій прогрес збережено на випадок повернення."
+            #     )
+            # except discord.Forbidden:
+            #     pass
+
+    @commands.Cog.listener()
+    async def on_member_remove(self, member: discord.Member):
+        """Відстежує вихід користувача з сервера"""
+        # Оновлюємо статус на сервері
+        self.db.update_server_status(member.id, False)
+        self.db.update_family_status(member.id, False)
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member):
+        """Відстежує приєднання користувача до сервера"""
+        # Перевіряємо чи є користувач в БД
+        users = self.db.get_all_users()
+        if str(member.id) in users:
+            # Користувач повернувся - оновлюємо статус
+            self.db.update_server_status(member.id, True)
+            # is_family_member оновиться автоматично через on_member_update коли дадуть роль
 
 # обов’язково експортуємо клас
 async def setup(bot):

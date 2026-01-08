@@ -3,7 +3,7 @@ from discord.ext import commands
 from datetime import datetime, timedelta
 import asyncio
 import os
-from config import QUESTS, TIMEZONE, QUESTS_CHANNEL, FAMILY_ROLE_ID
+from config import QUESTS, TIMEZONE, QUESTS_CHANNEL, FAMILY_ROLE_ID, QUESTS_CHANNEL_TAGS
 from views.quest_view import QuestView, load_status, save_status
 from utils.general_utils import find_type
 
@@ -46,6 +46,7 @@ class Quests(commands.Cog):
         return embed
     
     @commands.command(name="квест")
+    # async def create_quest(self, ctx, quest_key: str = None, start_time: str = None, start_date: str = None):
     async def create_quest(self, ctx, *, args_str: str = None):
         """Створює новий квест-заклик у форумі."""
 
@@ -92,6 +93,34 @@ class Quests(commands.Cog):
         statuses = load_status()
         s = statuses.get(quest_key)
         now = datetime.now(TIMEZONE)
+
+        # Перевірка і оновлення статусу по реальному часу
+        # if s:
+        #     if s.get("status") == "cooldown":
+        #         cd_end = datetime.fromisoformat(s["cooldown_end"])
+        #         if now < cd_end:
+        #             await ctx.send(f"⏳ Квест ще на кулдауні до {cd_end.strftime('%H:%M %d.%m')}!", delete_after=5)
+        #             await ctx.message.delete()
+        #             # return
+        #         else:
+        #             s["status"] = "available"
+        #     elif s.get("status") == "started":
+        #         end_time = datetime.fromisoformat(s["end_time"])
+        #         if now < end_time:
+        #             await ctx.send(f"⚠️ Квест уже йде до {end_time.strftime('%H:%M %d.%m')}!", delete_after=5)
+        #             await ctx.message.delete()
+        #             return
+        #         else:
+        #             cooldown_end = now + timedelta(hours=quest["cooldown_hours"])
+        #             s.update({"status": "cooldown", "cooldown_end": cooldown_end.isoformat()})
+        #     elif s.get("status") == "scheduled":
+        #         thread_id = s.get("thread_id")
+        #         if thread_id:
+        #             await ctx.send(f"⚠️ Квест уже заплановано у форумі!", delete_after=5)
+        #             await ctx.message.delete()
+        #             return
+
+        ####
 
         can_schedule = False
 
@@ -160,6 +189,11 @@ class Quests(commands.Cog):
         )
         embed.set_footer(text="Статус: 🔵 Заплановано")
 
+        # file = None
+        # if quest["image"] and os.path.exists(quest["image"]):
+        #     file = discord.File(quest["image"], filename="quest.png")
+        #     embed.set_image(url="attachment://quest.png")
+
         if quest["image"]:
             embed.set_image(url=quest["image"])
 
@@ -167,17 +201,43 @@ class Quests(commands.Cog):
 
         # if not s or s.get("status") == "available":
         if can_schedule or not s or s.get("status") == "available":
+            # створюємо новий пост у форумі
+            # if file:
+            #     thread = await forum.create_thread(
+            #         name=title,
+            #         content=f"{ctx.guild.get_role(FAMILY_ROLE_ID).mention}",
+            #         embed=embed,
+            #         file=file,
+            #         view=view
+            #     )
+            # else:
+            #     thread = await forum.create_thread(
+            #         name=title,
+            #         content=f"{ctx.guild.get_role(FAMILY_ROLE_ID).mention}",
+            #         embed=embed,
+            #         view=view
+            #     )
+            recrut_tag_id = QUESTS_CHANNEL_TAGS["recrut"]
+            recrut_tag = discord.utils.get(forum.available_tags, id=recrut_tag_id)
 
             thread = await forum.create_thread(
                 name=title,
                 content=f"{ctx.guild.get_role(FAMILY_ROLE_ID).mention}",
                 embed=embed,
-                view=view
+                view=view,
+                applied_tags=[recrut_tag] if recrut_tag else None
             )
             
             thread_id = thread.thread.id
             s = s or {}
-
+            # s.update({
+            #     "status": "scheduled",
+            #     "thread_id": thread_id,
+            #     "start_time": None,
+            #     "end_time": None,
+            #     "cooldown_end": None,
+            # })
+            # Якщо ми дозволяємо планувати під час КД — залишаємо cooldown_end як є.
             s.update({
                 "status": "scheduled",
                 "thread_id": thread_id,

@@ -1,9 +1,12 @@
 from discord.ext import commands
+from discord import app_commands
+import discord
 from config import (
     BOT_DEVELOPER_ID,
     ADMIN_ROLE_IDS,
     ECONOMY_CONTROLLER_ROLE_IDS,
-    RECRUITER_ROLE_IDS
+    RECRUITER_ROLE_IDS,
+    DISCIPLINE_CONTROLLER_ROLE_IDS
 )
 
 # ===== БАЗОВА ПЕРЕВІРКА =====
@@ -36,6 +39,12 @@ def is_recruiter(member):
         or has_any_role(member, RECRUITER_ROLE_IDS)
     )
 
+def is_discipline_controller(member):
+    return (
+        is_admin(member)
+        or has_any_role(member, DISCIPLINE_CONTROLLER_ROLE_IDS)
+    )
+
 # ===== ДЕКОРАТОРИ =====
 def is_bot_developer_only():
     async def predicate(ctx):
@@ -43,6 +52,18 @@ def is_bot_developer_only():
             return True
         raise commands.CheckFailure("⛔ У вас немає прав адміністратора.")
     return commands.check(predicate)
+
+def is_bot_developer_slash():
+    """Для slash команд"""
+    async def predicate(interaction: discord.Interaction) -> bool:
+        if is_bot_developer(interaction.user):
+            return True
+        await interaction.response.send_message(
+            "⛔ У вас немає прав для використання цієї команди.",
+            ephemeral=True
+        )
+        return False
+    return app_commands.check(predicate)
 
 def is_admin_only():
     async def predicate(ctx):
@@ -63,5 +84,19 @@ def is_recruiter_only():
         if is_recruiter(ctx.author):
             return True
         raise commands.CheckFailure("⛔ У вас немає прав рекрутера.")
+    return commands.check(predicate)
+
+def is_discipline_controller_only():
+    async def predicate(ctx):
+        if is_discipline_controller(ctx.author):
+            return True
+        raise commands.CheckFailure("⛔ У вас немає прав контролю дисципліни.")
+    return commands.check(predicate)
+
+def is_worker_only():
+    async def predicate(ctx):
+        if is_discipline_controller(ctx.author) or is_economy_controller(ctx.author) or is_recruiter_only(ctx.autor):
+            return True
+        raise commands.CheckFailure("⛔ У вас немає прав працівника.")
     return commands.check(predicate)
 
